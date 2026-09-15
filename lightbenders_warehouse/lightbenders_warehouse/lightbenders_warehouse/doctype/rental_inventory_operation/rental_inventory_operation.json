@@ -1,0 +1,29 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-20 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["rental", "operation_type", "request_id", "stock_entry", "disposition", "items"],
+ "fields": [
+  {"fieldname": "rental", "fieldtype": "Link", "label": "Rental", "options": "Equipment Rental", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "operation_type", "fieldtype": "Select", "label": "Operation", "options": "checkout\nreturn", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "request_id", "fieldtype": "Data", "label": "Request ID", "reqd": 1, "unique": 1, "in_list_view": 1},
+  {"fieldname": "stock_entry", "fieldtype": "Link", "label": "Stock Entry", "options": "Stock Entry", "read_only": 1},
+  {"fieldname": "disposition", "fieldtype": "Select", "label": "Disposition", "options": "returned\ndamaged\nlost"},
+  {"fieldname": "items", "fieldtype": "Table", "label": "Items", "options": "Rental Inventory Operation Item", "reqd": 1}
+ ],
+ "index_web_pages_for_search": 1,
+ "module": "Lightbenders Warehouse",
+ "name": "Rental Inventory Operation",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "System Manager", "read": 1, "create": 1, "write": 1, "delete": 1},
+  {"role": "Stock Manager", "read": 1, "create": 1, "write": 1},
+  {"role": "Stock User", "read": 1, "create": 1}
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

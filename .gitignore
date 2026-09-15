@@ -24,6 +24,8 @@ migrate_working_dir/
 
 # Flutter/Dart/Pub related
 **/doc/api/
+**/node_modules/
+**/dist/
 **/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins
@@ -49,6 +51,9 @@ app.*.map.json
 .env
 .env.*
 .dart-define-prod.env
+# Safe templates may be committed for setup documentation.
+!.env.example
+!**/.env.example
 
 # Skills (installed locally, not needed in version control for most teams)
 # Remove these lines if you want to commit skills

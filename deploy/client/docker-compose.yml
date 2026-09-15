@@ -1,0 +1,217 @@
+name: inventory-client
+
+services:
+  db:
+    image: mariadb:11.8
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in deploy/client/.env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in deploy/client/.env}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis-cache:
+    image: redis:6.2-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis-queue:
+    image: redis:6.2-alpine
+    volumes:
+      - redis-queue-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  configurator:
+    build:
+      context: ../../lightbenders_warehouse
+    image: inventory-client-erpnext:16.25.0
+    entrypoint: ["bash", "-c"]
+    command:
+      - >-
+        ls -1 apps > sites/apps.txt;
+        bench set-config -g db_host db;
+        bench set-config -gp db_port 3306;
+        bench set-config -g redis_cache redis://redis-cache:6379;
+        bench set-config -g redis_queue redis://redis-queue:6379;
+        bench set-config -g redis_socketio redis://redis-queue:6379;
+        bench set-config -gp socketio_port 9000;
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: "no"
+
+  site-init:
+    image: inventory-client-erpnext:16.25.0
+    depends_on:
+      db:
+        condition: service_healthy
+      configurator:
+        condition: service_completed_successfully
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+    environment:
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in deploy/client/.env}
+      ERPNEXT_ADMIN_PASSWORD: ${ERPNEXT_ADMIN_PASSWORD:?Set ERPNEXT_ADMIN_PASSWORD in deploy/client/.env}
+      ERPNEXT_SITE_NAME: ${ERPNEXT_SITE_NAME:?Set ERPNEXT_SITE_NAME in deploy/client/.env}
+      COMPANY_NAME: ${COMPANY_NAME:-Lightblenders}
+      COMPANY_ABBR: ${COMPANY_ABBR:-LB}
+      COMPANY_CURRENCY: ${COMPANY_CURRENCY:-NPR}
+      COMPANY_COUNTRY: ${COMPANY_COUNTRY:-Nepal}
+    entrypoint: ["bash", "-c"]
+    command:
+      - >-
+        if ! [ -d "sites/$${ERPNEXT_SITE_NAME}" ]; then
+          bench new-site "$${ERPNEXT_SITE_NAME}"
+          --mariadb-user-host-login-scope='%'
+          --admin-password="$${ERPNEXT_ADMIN_PASSWORD}"
+          --db-root-username=root
+          --db-root-password="$${DB_ROOT_PASSWORD}"
+          --install-app erpnext
+          --install-app lightbenders_warehouse
+          --set-default;
+        fi;
+        bench --site "$${ERPNEXT_SITE_NAME}" execute
+        lightbenders_warehouse.setup.client_bootstrap.bootstrap_initial_inventory;
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: "no"
+
+  backend:
+    image: inventory-client-erpnext:16.25.0
+    depends_on:
+      site-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in deploy/client/.env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in deploy/client/.env}
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+
+  queue-long:
+    image: inventory-client-erpnext:16.25.0
+    depends_on:
+      site-init:
+        condition: service_completed_successfully
+    command: ["bench", "worker", "--queue", "long,default,short"]
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+
+  queue-short:
+    image: inventory-client-erpnext:16.25.0
+    depends_on:
+      site-init:
+        condition: service_completed_successfully
+    command: ["bench", "worker", "--queue", "short,default"]
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+
+  scheduler:
+    image: inventory-client-erpnext:16.25.0
+    depends_on:
+      site-init:
+        condition: service_completed_successfully
+    command: ["bench", "schedule"]
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+
+  websocket:
+    image: inventory-client-erpnext:16.25.0
+    depends_on:
+      site-init:
+        condition: service_completed_successfully
+    command: ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+
+  erpnext:
+    image: inventory-client-erpnext:16.25.0
+    depends_on:
+      backend:
+        condition: service_started
+      websocket:
+        condition: service_started
+    command: ["nginx-entrypoint.sh"]
+    environment:
+      BACKEND: backend:8000
+      FRAPPE_SITE_NAME_HEADER: ${ERPNEXT_SITE_NAME:?Set ERPNEXT_SITE_NAME in deploy/client/.env}
+      SOCKETIO: websocket:9000
+      UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
+      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
+      UPSTREAM_REAL_IP_RECURSIVE: "off"
+      PROXY_READ_TIMEOUT: 120
+      CLIENT_MAX_BODY_SIZE: 50m
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ../../inventory_web_mcp
+    environment:
+      ERPNEXT_URL: http://erpnext:8080
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in deploy/client/.env}
+      PORT: "3101"
+      CORS_ORIGIN: http://localhost:${WEB_PORT:-8088}
+    depends_on:
+      erpnext:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../../inventory_web
+    ports:
+      - "${WEB_PORT:-8088}:80"
+    depends_on:
+      gateway:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  redis-queue-data:
+  sites:
+  logs:

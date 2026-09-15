@@ -29,7 +29,9 @@ class EquipmentRental(Document):
 		self._snapshot_daily_rates()
 
 	def on_submit(self):
-		self.db_set("status", "Active", update_modified=False)
+		# A submitted rental reserves its manifest. Inventory leaves the store only
+		# after the physical checkout scan is committed.
+		self.db_set("status", "Reserved", update_modified=False)
 
 	def on_cancel(self):
 		self.db_set("status", "Cancelled", update_modified=False)
@@ -88,8 +90,8 @@ class EquipmentRental(Document):
 	def return_rental(self):
 		if self.docstatus != 1:
 			frappe.throw(_("Only submitted rentals can be returned."))
-		if self.status != "Active":
-			frappe.throw(_("Only Active rentals can be returned."))
+		if self.status not in ("Active", "Partially Returned"):
+			frappe.throw(_("Only checked-out rentals can be returned."))
 		self.db_set("status", "Returned", update_modified=True)
 		return {"name": self.name, "status": "Returned"}
 
