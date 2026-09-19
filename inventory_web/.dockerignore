@@ -1,3 +1,6 @@
 .git
 .idea
+.dart_tool
+build
+test
 .vscode

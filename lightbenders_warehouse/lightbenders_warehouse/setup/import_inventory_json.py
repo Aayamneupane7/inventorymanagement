@@ -14,7 +14,7 @@ from frappe.utils import getdate
 
 from lightbenders_warehouse.services.rental_availability import get_rental_warehouse, resolve_company
 
-INITIAL_IMPORT_REMARKS = "Initial Lightblenders inventory import"
+INITIAL_IMPORT_REMARKS = "Initial client inventory import v1 (560 GRIP serialized units)"
 
 
 def import_file(path: str) -> dict:
@@ -23,6 +23,7 @@ def import_file(path: str) -> dict:
 
 
 def import_rows(rows: list[dict]) -> dict:
+	_validate_rows(rows)
 	company = resolve_company()
 	if frappe.db.exists(
 		"Stock Entry",
@@ -74,6 +75,27 @@ def import_rows(rows: list[dict]) -> dict:
 		doc.insert(ignore_permissions=True)
 		doc.submit()
 	return {"products": len(by_product), "serialized_assets": sum(map(len, serials_by_item.values())), "quantity_items": len(qty_by_item)}
+
+
+def _validate_rows(rows: list[dict]) -> None:
+	if len(rows) != 560:
+		frappe.throw(f"Client seed must contain exactly 560 rows; found {len(rows)}.")
+	barcodes = [row.get("barcode_payload") for row in rows]
+	asset_ids = [row.get("asset_id") for row in rows]
+	if any(not value for value in barcodes + asset_ids):
+		frappe.throw("Client seed contains a row without a barcode payload or asset ID.")
+	if len(set(barcodes)) != len(barcodes):
+		frappe.throw("Client seed contains duplicate barcode payloads.")
+	if len(set(asset_ids)) != len(asset_ids):
+		frappe.throw("Client seed contains duplicate asset IDs.")
+	if any(row.get("tracking_mode") != "SERIALIZED" for row in rows):
+		frappe.throw("Client seed must contain serialized rows only.")
+	by_product: defaultdict[str, set[tuple[str, str]]] = defaultdict(set)
+	for row in rows:
+		by_product[str(row["product_code"])].add((str(row["equipment_name"]), str(row["category"])))
+	conflicts = {code: values for code, values in by_product.items() if len(values) != 1}
+	if conflicts:
+		frappe.throw(f"Client seed has conflicting names or categories for item codes: {sorted(conflicts)}")
 
 
 def _ensure_group(name: str) -> None:

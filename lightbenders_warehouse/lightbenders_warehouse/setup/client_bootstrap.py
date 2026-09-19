@@ -25,6 +25,12 @@ def bootstrap_initial_inventory() -> dict:
 	frappe.db.set_single_value("Global Defaults", "default_company", company)
 	_ensure_rental_warehouse(company)
 	result = import_file(str(_initial_inventory_file()))
+	if not result.get("already_imported") and (
+		result.get("products") != 79
+		or result.get("serialized_assets") != 560
+		or result.get("quantity_items") != 0
+	):
+		frappe.throw(f"Client inventory verification failed: {result}")
 	frappe.db.commit()
 	return {"company": company, "warehouse": get_rental_warehouse(company), **result}
 

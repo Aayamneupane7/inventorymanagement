@@ -79,19 +79,19 @@ services:
       COMPANY_COUNTRY: ${COMPANY_COUNTRY:-Nepal}
     entrypoint: ["bash", "-c"]
     command:
-      - >-
+      - |
+        set -eu
         if ! [ -d "sites/$${ERPNEXT_SITE_NAME}" ]; then
-          bench new-site "$${ERPNEXT_SITE_NAME}"
-          --mariadb-user-host-login-scope='%'
-          --admin-password="$${ERPNEXT_ADMIN_PASSWORD}"
-          --db-root-username=root
-          --db-root-password="$${DB_ROOT_PASSWORD}"
-          --install-app erpnext
-          --install-app lightbenders_warehouse
-          --set-default;
-        fi;
-        bench --site "$${ERPNEXT_SITE_NAME}" execute
-        lightbenders_warehouse.setup.client_bootstrap.bootstrap_initial_inventory;
+          bench new-site "$${ERPNEXT_SITE_NAME}" \
+            --mariadb-user-host-login-scope='%' \
+            --admin-password="$${ERPNEXT_ADMIN_PASSWORD}" \
+            --db-root-username=root \
+            --db-root-password="$${DB_ROOT_PASSWORD}" \
+            --install-app erpnext \
+            --install-app lightbenders_warehouse \
+            --set-default
+        fi
+        bench --site "$${ERPNEXT_SITE_NAME}" execute lightbenders_warehouse.setup.client_bootstrap.bootstrap_initial_inventory
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
@@ -198,6 +198,11 @@ services:
     depends_on:
       erpnext:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3101/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
     restart: unless-stopped
 
   web:
@@ -207,7 +212,12 @@ services:
       - "${WEB_PORT:-8088}:80"
     depends_on:
       gateway:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
     restart: unless-stopped
 
 volumes:

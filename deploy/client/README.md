@@ -6,15 +6,11 @@ Docker network. Only the web application is exposed to the office network.
 
 ## Before handover
 
-Build the web bundle once on the delivery machine and include
-`inventory_web/build/web` in the client delivery folder/archive:
+This package is source-build only. The client needs Docker Desktop on Windows
+or macOS, or Docker Engine plus Docker Compose on Linux. The client does not
+need Flutter, Node.js, Python, or a separate ERPNext installation.
 
-```sh
-cd inventory_web
-/home/hckeer/flutter/bin/flutter build web --release --dart-define=GATEWAY_URL=/gateway
-```
-
-Build the custom ERPNext image once to verify the package:
+Verify the complete Docker build:
 
 ```sh
 cd deploy/client
@@ -25,17 +21,16 @@ docker compose build
 
 ## Client installation
 
-1. Install Docker Engine and the Docker Compose plugin on a dedicated,
-   always-on Linux PC or server.
-2. Copy this repository with the prebuilt `inventory_web/build/web` files to
-   that server.
+1. Install Docker Desktop on the Windows or macOS client computer.
+2. Clone this private repository and open a terminal in the repository.
 3. Copy `.env.example` to `.env` and replace every placeholder with a unique
    secret. This step is mandatory; Compose stops before creating containers if
    a required value is missing. Keep `ERPNEXT_SITE_NAME` unchanged after first
    startup. Set the Company values before the first start; changing the Company
    name or abbreviation after inventory has been imported is intentionally
    rejected.
-4. Start the complete stack:
+4. Start the complete stack. The first build downloads Flutter and other
+   dependencies inside Docker and may take several minutes:
 
    ```sh
    cd deploy/client
@@ -43,8 +38,8 @@ docker compose build
    ```
 
 5. Wait for the first-time ERPNext site creation to finish, then open
-   `http://SERVER-LAN-IP:8088`. Change `WEB_PORT` to `80` if that port is
-   available and the server is configured for it.
+   `http://localhost:8088`. Other office computers can use the client
+   computer's LAN IP, for example `http://192.168.1.25:8088`.
 
 ## Checks
 
@@ -56,15 +51,23 @@ curl http://localhost:8088/gateway/health
 
 `site-init` must exit with code `0`. It creates the ERPNext site and installs
 both `erpnext` and `lightbenders_warehouse` on the first start. It then creates
-the configured Company and rental warehouse, and imports the included initial
-barcode inventory once. On future starts the import is idempotent and does not
-add stock again.
+the configured Company and rental warehouse and imports exactly 79 Items and
+560 serialized equipment units. On future starts the import is idempotent and
+does not add stock again.
 
 ## Data and backups
 
 The `db-data` and `sites` volumes contain business data. Back them up daily to
 a different physical device or cloud location. Do not run `docker compose down
 -v` on the client server: that deletes all ERPNext and inventory data.
+
+For a database backup, run:
+
+```sh
+docker compose exec backend bench --site inventory.local backup --with-files
+```
+
+Keep the generated backup outside Docker volumes.
 
 ## Network and scanner use
 

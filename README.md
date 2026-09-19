@@ -19,7 +19,7 @@ Install these on the computer that will run the application:
 
 - Docker Engine
 - Docker Compose plugin (`docker compose`)
-- Flutter SDK, only if building the web frontend from source
+- Docker Desktop on Windows or macOS, or Docker Engine on Linux
 - At least 8 GB RAM is recommended for the complete ERPNext stack
 
 The first Docker build downloads required images and dependencies, so it may
@@ -30,22 +30,14 @@ take several minutes.
 Clone the repository:
 
 ```bash
-git clone https://github.com/hckeer/inventorymanagement.git
+git clone https://github.com/Aayamneupane7/inventorymanagement.git
 cd inventorymanagement
 ```
 
-Build the Flutter web frontend. The gateway is served through the same web
-origin at `/gateway`:
+Go to the client deployment directory and create the local environment file:
 
 ```bash
-cd inventory_web
-flutter build web --release --dart-define=GATEWAY_URL=/gateway
-cd ../deploy/client
-```
-
-Create the local environment file:
-
-```bash
+cd deploy/client
 cp .env.example .env
 ```
 
@@ -63,6 +55,10 @@ Start the complete application:
 docker compose up -d --build
 ```
 
+Docker builds the Flutter Web frontend, gateway, and custom ERPNext image
+automatically. Flutter, Node.js, and Python do not need to be installed on the
+client computer.
+
 Open the application at `http://localhost:8088`.
 
 Log in with:
@@ -71,19 +67,20 @@ Log in with:
 - Password: the value of `ERPNEXT_ADMIN_PASSWORD` in `.env`
 
 The first startup creates the ERPNext site, installs ERPNext and the custom
-warehouse app, creates the configured company and warehouse, and imports the
-included initial inventory. The first startup can take several minutes.
+warehouse app, creates the configured company and warehouse, and imports
+exactly 79 Items and 560 serialized equipment units from the client seed. The
+first startup can take several minutes.
 
 ## Allow a colleague on the same network to test
 
-Run the application on a computer that stays powered on. Find its LAN IP:
+Run the application on a computer that stays powered on. On Windows, find its
+LAN address with `ipconfig`; on macOS/Linux, use `ifconfig` or `hostname -I`.
+For example, if the address is `192.168.1.25`, another computer on the same
+network can open:
 
-```bash
-hostname -I
+```text
+http://192.168.1.25:8088
 ```
-
-If the address is `192.168.1.25`, another computer on the same network can
-open `http://192.168.1.25:8088`.
 
 The Docker computer and containers must remain online. Do not expose this
 development URL directly to the public internet. Use HTTPS and proper access
@@ -139,9 +136,6 @@ docker compose ps
 docker compose logs --tail=100
 ```
 
-If the web build is missing, run the Flutter build command in the Quick start
-section before running `docker compose up -d --build`.
-
 If first initialization fails, inspect:
 
 ```bash
@@ -153,6 +147,10 @@ docker compose logs site-init
 See [`deploy/client/README.md`](deploy/client/README.md) for the full
 single-server handover procedure, scanner configuration, network behavior, and
 backup guidance.
+
+The 560-row source workbook is `docs/generated/GRIP_LIST_BARCODE_PAYLOADS.xlsx`.
+The reproducible conversion is `scripts/generate_grip_client_seed.py`; the
+generated ERPNext seed is committed under the custom app's setup data.
 
 ## Project status
 
